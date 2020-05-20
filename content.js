@@ -1,10 +1,8 @@
-/*var div = document.createElement("div"); 
-document.body.appendChild(div); 
-div.innerText="Test";*/
 var viewWidth = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
 var viewHeight = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
 var onPlatform = false;
 var player;
+var controller;
 var interval;
 
 function createCanvas(){
@@ -12,6 +10,7 @@ function createCanvas(){
 		detectPlatforms();
 		restrictKeys = true;
 		player = new buildPlayer(30,60, "red", viewWidth/2, window.pageYOffset);
+		controller = new buildController(deadZoneX*2, deadZoneY*2, "#00000066", 0, 0);
 		gameSpace.start();
 		interval = setInterval(updateFrame, 20);
 
@@ -25,7 +24,6 @@ function createCanvas(){
 }
 
 var gameSpace = {
-
 	canvas : document.createElement("canvas"),
 	start : function() {
 		this.canvas.style.position = "absolute";
@@ -70,6 +68,25 @@ function buildPlatform(width, height, color, x, y) {
 	}
 }
 
+function buildController(width, height, color, x, y) {
+	this.width = width;
+	this.height = height;
+	this.x = x;
+	this.y = y;
+	this.hidden = true;
+
+	this.setVisible = function(b) {
+		this.hidden = !b;
+	}
+
+	this.update = function() {
+		if (this.hidden) return;
+		ctx = gameSpace.context;
+		ctx.fillStyle = color;
+		ctx.fillRect(this.x, this.y, this.width, this.height);
+	}
+}
+
 function buildPlayer(width, height, color, x, y){
 	this.width = width;
 	this.height = height;
@@ -87,7 +104,6 @@ function buildPlayer(width, height, color, x, y){
 	}
 
 	this.updatePos = function() {
-
 		// Vertical Positioning 
 		if (this.y + this.height < document.body.scrollHeight && !onPlatform){
 			this.falling = true;
@@ -131,7 +147,6 @@ function easeView() {
 	} else {
 		canScroll = true;
 	}
-
 	return window.pageYOffset;
 }
 
@@ -198,6 +213,7 @@ function updateFrame() {
 	gameSpace.clear();
 	updatePlatforms();
 	detectPlatforms();
+	controller.update();
 	player.updatePos();
 	player.update();
 	smoothScroll();
@@ -243,7 +259,9 @@ function accelerate(){
 var map = {};
 onkeydown = onkeyup = function(e){
     map[e.keyCode] = e.type == 'keydown';
-    
+	
+	console.log(e.keyCode);
+
     // Keydown Left & Right Arrows
 	if (map[37]) {
 		leftPress = true;
@@ -263,7 +281,17 @@ onkeydown = onkeyup = function(e){
 		rightPress = false;
 	}
 
-	if (!player.falling && (map[32] || map[38])) {
+	// Jump
+	if ((map[32] || map[38])) {
+		jump();
+	}
+
+	// Drop through platform
+	if (map[40]) drop();
+}
+
+function jump() {
+	if (!player.falling) {
 		player.falling = true;
 		player.y -= 1;
 		player.velY -= 12;
@@ -271,7 +299,58 @@ onkeydown = onkeyup = function(e){
 	}
 }
 
+function drop() {
+	if (!player.falling) {
+		player.y += 1;
+	}
+}
+
 var restrictKeys = false;
 //window.addEventListener("resize", gameSpace.update, false);
 window.addEventListener("keydown", disable_arrow_keys, false);
+
+// Touch events
+document.addEventListener('touchstart', handleTouchStart, { passive: false });
+document.body.addEventListener('touchmove', handleTouchMove, { passive: false });
+document.body.addEventListener("touchend", function(e) {
+	if (e.targetTouches.length == 0) {
+		rightPress = leftPress = false;
+		controller.setVisible(false);
+	}
+	xDown = yDown = null;
+});
+
+var xDown = null;
+var yDown = null;
+
+function handleTouchStart(e) {
+    const firstTouch = e.targetTouches[0];
+    xDown = firstTouch.clientX;
+	yDown = firstTouch.clientY;
+};
+
+var deadZoneX = 60;
+var deadZoneY = 35;
+
+function handleTouchMove(e) {
+	if (!xDown || !yDown) return;
+	e.preventDefault();
+	
+    var xUp = e.targetTouches[0].clientX;
+    var yUp = e.targetTouches[0].clientY;
+    var xDiff = xDown - xUp;
+	var yDiff = yDown - yUp;
+
+	if (xDiff > deadZoneX) leftPress = true, rightPress = false;
+	else if (xDiff < -deadZoneX) leftPress = false, rightPress = true;
+	else leftPress = rightPress = false;
+
+	if (yDiff > deadZoneY) jump();
+	else if (yDiff < -deadZoneY) drop();
+
+	controller.x = xDown - deadZoneX;
+	controller.y = window.pageYOffset + yDown;
+	controller.setVisible(true);
+};
+
 createCanvas();
